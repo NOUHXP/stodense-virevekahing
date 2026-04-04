@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presence Pro | Enterprise Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --primary: #6366f1;
+            --sidebar-w: 260px;
+            --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            transition: background-color 0.3s ease;
+        }
+
+        /* Mode Styles */
+        body.light { background-color: #f8fafc; color: #0f172a; }
+        body.dark { background-color: #020617; color: #f8fafc; }
+
+        /* Background Mesh */
+        .bg-mesh {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            opacity: 0.2;
+            filter: blur(100px);
+            pointer-events: none;
+        }
+
+        .blob {
+            position: absolute;
+            width: 500px; height: 500px;
+            background: linear-gradient(45deg, #4f46e5, #ec4899);
+            border-radius: 50%;
+            animation: drift 20s infinite alternate ease-in-out;
+        }
+
+        @keyframes drift {
+            0% { transform: translate(-10%, -10%) scale(1); }
+            100% { transform: translate(10%, 10%) scale(1.1); }
+        }
+
+        /* Glassmorphism */
+        .glass {
+            backdrop-filter: blur(12px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        body.dark .glass { background: rgba(15, 23, 42, 0.7); }
+        body.light .glass { background: rgba(255, 255, 255, 0.8); border-color: rgba(0,0,0,0.05); }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-w);
+            height: 100vh;
+            z-index: 50;
+        }
+
+        .nav-link {
+            transition: var(--transition-fast);
+            border-radius: 14px;
+            color: #94a3b8;
+            cursor: pointer;
+        }
+        .nav-link:hover { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
+        .nav-link.active { background: var(--primary) !important; color: white !important; box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.4); }
+
+        /* Page transitions */
+        .page { 
+            display: none; 
+            opacity: 0; 
+            transform: translateY(8px);
+        }
+        .page.active { 
+            display: block; 
+            opacity: 1; 
+            transform: translateY(0);
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Buttons */
+        .btn-primary {
+            background: var(--primary);
+            transition: var(--transition-fast);
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.1); }
+        .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+
+        /* Inputs */
+        input {
+            background: rgba(0,0,0,0.05) !important;
+            border: 1.5px solid transparent;
+            transition: var(--transition-fast);
+        }
+        body.dark input { background: rgba(255,255,255,0.04) !important; color: white; }
+        input:focus { border-color: var(--primary); outline: none; background: rgba(99, 102, 241, 0.05) !important; }
+
+        .loader {
+            width: 20px; height: 20px;
+            border: 2.5px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            animation: rotation 0.8s linear infinite;
+        }
+
+        @keyframes rotation { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* Status Toast Animation */
+        #status-toast {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: translateY(100px);
+        }
+        #status-toast.visible {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="dark">
+
+    <div class="bg-mesh">
+        <div class="blob"></div>
+    </div>
+
+    <!-- 🔒 LOGIN -->
+    <div id="login-overlay" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950">
+        <div class="w-full max-w-sm p-10 glass rounded-[2rem] text-center shadow-2xl">
+            <div class="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center text-white text-2xl mb-6 shadow-xl shadow-indigo-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+            </div>
+            <h1 class="text-2xl font-extrabold tracking-tight">Access Terminal</h1>
+            <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2 mb-8">Secure V7.2 Stable</p>
+            
+            <form onsubmit="event.preventDefault(); window.validateLogin();" class="space-y-4">
+                <input type="password" id="auth-pass" maxlength="4" placeholder="••••" class="w-full p-5 rounded-2xl text-center text-4xl tracking-widest font-black">
+                <button type="submit" id="login-btn" class="w-full btn-primary p-5 rounded-2xl font-bold uppercase tracking-widest text-xs text-white">Unlock</button>
+            </form>
+            <p id="auth-error" class="text-red-500 text-[10px] font-black mt-6 hidden uppercase tracking-widest">Access Denied</p>
+        </div>
+    </div>
+
+    <!-- 📱 APP FRAMEWORK -->
+    <div id="main-interface" class="hidden flex h-screen">
+        
+        <aside class="sidebar glass flex flex-col p-6 border-r border-white/5">
+            <div class="mb-10 flex items-center gap-3 px-2">
+                <div class="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black">P</div>
+                <span class="text-xl font-black tracking-tighter">Presence<span class="text-indigo-500">Pro</span></span>
+            </div>
+
+            <nav class="flex-1 space-y-1">
+                <button onclick="changePage('home')" id="btn-home" class="nav-link w-full text-left p-3.5 flex items-center gap-3 active">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 4v16m8-8H4"/></svg>
+                    <span class="font-bold text-[11px] uppercase tracking-widest">Register</span>
+                </button>
+                <button onclick="changePage('list')" id="btn-list" class="nav-link w-full text-left p-3.5 flex items-center gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    <span class="font-bold text-[11px] uppercase tracking-widest">Database</span>
+                </button>
+                <button onclick="changePage('goals')" id="btn-goals" class="nav-link w-full text-left p-3.5 flex items-center gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <span class="font-bold text-[11px] uppercase tracking-widest">Goals</span>
+                </button>
+                <button onclick="changePage('history')" id="btn-history" class="nav-link w-full text-left p-3.5 flex items-center gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="font-bold text-[11px] uppercase tracking-widest">History</span>
+                </button>
+            </nav>
+
+            <div class="pt-6 border-t border-white/5">
+                <button onclick="changePage('settings')" id="btn-settings" class="nav-link w-full text-left p-3.5 flex items-center gap-3 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+                    <span class="font-bold text-[11px] uppercase tracking-widest">Settings</span>
+                </button>
+                <div class="p-3.5 glass rounded-2xl flex items-center justify-between">
+                    <span class="text-[10px] font-black uppercase opacity-40">Theme</span>
+                    <div class="w-10 h-6 bg-slate-800 rounded-full relative cursor-pointer flex items-center px-1" onclick="toggleTheme()">
+                        <div id="theme-thumb" class="w-4 h-4 bg-white rounded-full transition-transform"></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 p-12 overflow-y-auto relative">
+            <header class="flex justify-between items-start mb-12">
+                <div>
+                    <h2 class="text-4xl font-black tracking-tight" id="active-header">Registration</h2>
+                    <p class="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest" id="header-desc">Log new entry into the ledger</p>
+                </div>
+                <div class="glass px-6 py-3 rounded-2xl font-mono text-indigo-400 font-black text-lg shadow-lg border-indigo-500/10" id="live-clock">00:00:00</div>
+            </header>
+
+            <!-- PAGE: HOME -->
+            <section id="page-home" class="page active">
+                <div class="max-w-md glass p-10 rounded-[2rem] shadow-xl">
+                    <form onsubmit="event.preventDefault(); window.addStudent();" class="space-y-8">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">Identity</label>
+                            <input type="text" id="inp-name" required placeholder="Full Name" class="w-full p-5 rounded-2xl font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">Age</label>
+                            <input type="number" id="inp-age" required placeholder="Age" class="w-full p-5 rounded-2xl font-bold">
+                        </div>
+                        <button type="submit" id="submit-btn" class="w-full btn-primary p-6 rounded-2xl text-sm font-black uppercase tracking-widest text-white flex items-center justify-center gap-3">
+                            <span>Submit Record</span>
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- PAGE: LIST -->
+            <section id="page-list" class="page">
+                <div class="glass rounded-2xl overflow-hidden shadow-xl border border-white/5">
+                    <table class="w-full text-left">
+                        <thead class="bg-indigo-600/10 text-indigo-400">
+                            <tr>
+                                <th class="p-6 font-black uppercase text-[10px] tracking-widest">Subject</th>
+                                <th class="p-6 font-black uppercase text-[10px] tracking-widest">Age</th>
+                                <th class="p-6 font-black uppercase text-[10px] tracking-widest">Time</th>
+                                <th class="p-6 text-right font-black uppercase text-[10px] tracking-widest">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- PAGE: GOALS -->
+            <section id="page-goals" class="page">
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                    <div class="glass p-10 rounded-[2rem] border-l-[10px] border-indigo-600 shadow-xl lg:col-span-2">
+                        <h4 class="text-[10px] font-black text-slate-500 uppercase mb-8 tracking-widest">Throughput</h4>
+                        <div class="flex items-end justify-between mb-6">
+                            <span id="progress-val" class="text-7xl font-black text-indigo-500 tracking-tighter">0%</span>
+                            <div class="text-right">
+                                <span class="block text-slate-500 font-black text-[10px] uppercase tracking-widest mb-1">Target</span>
+                                <span class="text-xl font-bold">30 Records</span>
+                            </div>
+                        </div>
+                        <div class="h-4 w-full bg-slate-800/40 rounded-full overflow-hidden p-1">
+                            <div id="main-progress" class="h-full bg-indigo-600 rounded-full transition-all duration-700 shadow-lg shadow-indigo-500/30" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="glass p-10 rounded-[2rem] flex flex-col justify-center relative overflow-hidden shadow-xl">
+                        <h4 class="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Total Volume</h4>
+                        <span id="stat-total" class="text-8xl font-black tracking-tighter">00</span>
+                        <div class="absolute -right-6 -bottom-6 text-[10rem] font-black opacity-[0.03] select-none pointer-events-none">DB</div>
+                    </div>
+
+                    <div class="glass p-10 rounded-[2rem] shadow-xl xl:col-span-3 border border-indigo-500/10">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center text-indigo-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </div>
+                            <h4 class="text-xl font-black tracking-tight">About Presence Pro</h4>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <p class="text-slate-400 text-sm leading-relaxed font-medium">
+                                Presence Pro is a high-performance tracking protocol designed for real-time subject logging and audit transparency. Built on a low-latency distributed ledger, it ensures that every record is synchronized across the enterprise grid instantly.
+                            </p>
+                            <ul class="space-y-4">
+                                <li class="flex items-start gap-3">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0"></span>
+                                    <span class="text-xs font-bold text-slate-300">Encrypted transmission via secure tunnel.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0"></span>
+                                    <span class="text-xs font-bold text-slate-300">Automated archival for historical compliance.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0"></span>
+                                    <span class="text-xs font-bold text-slate-300">Real-time throughput metrics & goal tracking.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: HISTORY -->
+            <section id="page-history" class="page">
+                <div id="day-groups" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+            </section>
+
+            <!-- PAGE: SETTINGS -->
+            <section id="page-settings" class="page">
+                <div class="max-w-xl space-y-6">
+                    <div class="glass p-10 rounded-[2rem] shadow-xl">
+                        <h4 class="text-[10px] font-black text-slate-500 uppercase mb-6 tracking-widest">Protocol PIN</h4>
+                        <div class="flex gap-4">
+                            <input type="password" id="set-new-pass" maxlength="4" placeholder="••••" class="flex-1 p-4 rounded-xl font-mono text-center text-xl">
+                            <button onclick="updatePassword()" class="btn-primary px-8 rounded-xl font-bold uppercase text-[10px] tracking-widest text-white">Update</button>
+                        </div>
+                    </div>
+                    <div class="glass p-10 rounded-[2rem] border border-red-500/20 shadow-xl">
+                        <h4 class="text-[10px] font-black text-red-500 uppercase mb-4 tracking-widest">System Purge</h4>
+                        <button onclick="manualWipe()" class="w-full bg-red-600/10 text-red-500 border border-red-600/30 p-4 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-red-600 hover:text-white transition-all">Clear Ledger</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Feedback Toast -->
+            <div id="status-toast" class="fixed bottom-10 right-10 z-[200] glass px-8 py-4 rounded-2xl flex items-center gap-4 border border-indigo-500/20 shadow-2xl">
+                <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-[10px] font-black">✓</div>
+                <span class="text-sm font-bold uppercase tracking-widest" id="toast-msg">Entry Verified</span>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const firebaseConfig = JSON.parse(__firebase_config);
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'presence_v7_v2';
+
+        let students = [];
+        let currentPass = localStorage.getItem('app_pin_v7') || '1234';
+        let isAuthenticating = false;
+        let dbUnsubscribe = null;
+
+        const showToast = (msg) => {
+            const t = document.getElementById('status-toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.add('visible');
+            setTimeout(() => t.classList.remove('visible'), 3000);
+        };
+
+        // --- THEME ---
+        window.toggleTheme = () => {
+            const isDark = document.body.classList.toggle('dark');
+            document.body.classList.toggle('light', !isDark);
+            document.getElementById('theme-thumb').style.transform = isDark ? 'translateX(16px)' : 'translateX(0)';
+            localStorage.setItem('presence_theme', isDark ? 'dark' : 'light');
+        };
+        if (localStorage.getItem('presence_theme') === 'light') toggleTheme();
+
+        // --- NAVIGATION ---
+        window.changePage = (id) => {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
+            document.getElementById(`page-${id}`).classList.add('active');
+            document.getElementById(`btn-${id}`).classList.add('active');
+            document.getElementById('active-header').innerText = id.charAt(0).toUpperCase() + id.slice(1);
+        };
+
+        // --- AUTH ---
+        window.validateLogin = async () => {
+            if (isAuthenticating) return;
+            const input = document.getElementById('auth-pass').value;
+            const err = document.getElementById('auth-error');
+            const btn = document.getElementById('login-btn');
+            
+            if (input === currentPass) {
+                isAuthenticating = true;
+                err.classList.add('hidden');
+                btn.disabled = true;
+                btn.innerHTML = `<span class="loader"></span>`;
+                
+                try {
+                    // RULE 3: AUTH BEFORE QUERIES
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await auth.signInWithCustomToken(__initial_auth_token);
+                    } else {
+                        await auth.signInAnonymously();
+                    }
+                    
+                    document.getElementById('login-overlay').style.display = 'none';
+                    document.getElementById('main-interface').classList.remove('hidden');
+                    initDB(); // Start Firestore only after successful Auth
+                } catch (e) { 
+                    console.error("Auth error", e);
+                    isAuthenticating = false;
+                    btn.disabled = false;
+                    btn.innerHTML = 'Unlock';
+                    err.innerText = "Connection Failed";
+                    err.classList.remove('hidden');
+                }
+            } else {
+                err.innerText = "Access Denied";
+                err.classList.remove('hidden');
+                document.getElementById('auth-pass').value = '';
+            }
+        };
+
+        // --- DB ---
+        function initDB() {
+            if (!auth.currentUser) return;
+            if (dbUnsubscribe) dbUnsubscribe();
+
+            // RULE 1: Collection Path
+            const ref = db.collection('artifacts', appId, 'public', 'data', 'presence');
+
+            // RULE 2: No complex queries, fetch and sort in memory
+            dbUnsubscribe = ref.onSnapshot(s => {
+                students = s.docs.map(d => ({ id: d.id, ...d.data() }));
+                // In-memory sort by timestamp
+                students.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                render();
+            }, err => {
+                console.error("Firestore error:", err);
+            });
+        }
+
+        window.addStudent = async () => {
+            const btn = document.getElementById('submit-btn');
+            const n = document.getElementById('inp-name');
+            const a = document.getElementById('inp-age');
+            if (!n.value || !a.value || btn.disabled || !auth.currentUser) return;
+
+            btn.disabled = true;
+            const oldContent = btn.innerHTML;
+            btn.innerHTML = `<span class="loader"></span>`;
+
+            try {
+                const entry = { 
+                    name: n.value.trim(), 
+                    age: parseInt(a.value), 
+                    ts: Date.now(), 
+                    time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}), 
+                    dateLabel: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) 
+                };
+                
+                await db.collection('artifacts', appId, 'public', 'data', 'presence').add(entry);
+                
+                showToast("Entry Synced");
+                n.value = ''; 
+                a.value = '';
+            } catch (err) {
+                console.error("Add error:", err);
+                showToast("Sync Failed");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = oldContent;
+            }
+        };
+
+        window.deleteEntry = id => {
+            if (!auth.currentUser) return;
+            db.collection('artifacts', appId, 'public', 'data', 'presence').doc(id).delete()
+                .then(() => showToast("Record Purged"))
+                .catch(() => showToast("Action Denied"));
+        };
+
+        window.manualWipe = async () => {
+            if (!auth.currentUser || students.length === 0) return;
+            const b = db.batch();
+            students.forEach(s => b.delete(db.collection('artifacts', appId, 'public', 'data', 'presence').doc(s.id)));
+            await b.commit();
+            showToast("System Purged");
+        };
+
+        window.updatePassword = () => {
+            const v = document.getElementById('set-new-pass').value;
+            if (v.length === 4) { 
+                currentPass = v; 
+                localStorage.setItem('app_pin_v7', v); 
+                document.getElementById('set-new-pass').value = ''; 
+                showToast("PIN Updated");
+            }
+        };
+
+        function render() {
+            // Update Goals Page Stats
+            const len = students.length;
+            document.getElementById('stat-total').innerText = len.toString().padStart(2, '0');
+            const perc = Math.min((len / 30) * 100, 100);
+            document.getElementById('main-progress').style.width = perc + '%';
+            document.getElementById('progress-val').innerText = Math.round(perc) + '%';
+
+            // Update List Page Table
+            const tbody = document.getElementById('table-body');
+            if (students.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-12 text-center opacity-30 text-xs font-black uppercase">Ledger Empty</td></tr>';
+            } else {
+                tbody.innerHTML = students.map(s => `
+                    <tr class="border-b border-white/5 hover:bg-indigo-500/5 transition-colors group">
+                        <td class="p-6 font-bold text-sm">${s.name}</td>
+                        <td class="p-6 text-slate-400 text-xs">${s.age}</td>
+                        <td class="p-6 text-indigo-400 font-mono text-xs">${s.time}</td>
+                        <td class="p-6 text-right">
+                            <button onclick="deleteEntry('${s.id}')" class="text-slate-600 hover:text-red-500 transition-colors px-2 py-1 text-lg">×</button>
+                        </td>
+                    </tr>`).join('');
+            }
+
+            // Update History Page Groups
+            const groups = {};
+            students.forEach(s => groups[s.dateLabel] = (groups[s.dateLabel] || 0) + 1);
+            document.getElementById('day-groups').innerHTML = Object.keys(groups)
+                .sort((a,b) => new Date(b) - new Date(a))
+                .map(d => `
+                    <div class="glass p-8 rounded-2xl border-t-4 border-indigo-600 shadow-lg">
+                        <div class="text-[9px] font-black text-slate-500 uppercase mb-2">Cycle</div>
+                        <div class="text-lg font-black mb-4">${d}</div>
+                        <div class="text-xs font-bold text-indigo-400 bg-indigo-500/10 inline-block px-3 py-1 rounded-full">${groups[d]} Records</div>
+                    </div>`).join('');
+        }
+
+        setInterval(() => {
+            document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('en-GB');
+        }, 1000);
+    </script>
+</body>
+</html>
