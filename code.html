@@ -487,14 +487,33 @@
 
         // Local Memory State
         let currentUser = null;
-        let subjects = [];
-        let chatHistory = [];
-        let calcHistory = [];
         let terminalSettings = { intensity: 0.15, tint: '#6366f1' };
         let currentExpression = "0";
         let calcResetNext = false;
         let systemPassword = "1234";
         let customApiKey = localStorage.getItem('presence_pro_api_token') || "";
+
+        // --- 24H DAILY RESET & AUTO-SAVE PROTOCOL ---
+        const todayStr = new Date().toLocaleDateString();
+        let lastSavedDay = localStorage.getItem('presence_pro_last_day');
+        
+        if (lastSavedDay !== todayStr) {
+            // New day detected: wipe memory
+            localStorage.removeItem('presence_pro_subjects');
+            localStorage.removeItem('presence_pro_chat');
+            localStorage.removeItem('presence_pro_calc');
+            localStorage.setItem('presence_pro_last_day', todayStr);
+        }
+
+        let subjects = JSON.parse(localStorage.getItem('presence_pro_subjects')) || [];
+        let chatHistory = JSON.parse(localStorage.getItem('presence_pro_chat')) || [];
+        let calcHistory = JSON.parse(localStorage.getItem('presence_pro_calc')) || [];
+
+        function saveLocalData() {
+            localStorage.setItem('presence_pro_subjects', JSON.stringify(subjects));
+            localStorage.setItem('presence_pro_chat', JSON.stringify(chatHistory));
+            localStorage.setItem('presence_pro_calc', JSON.stringify(calcHistory));
+        }
 
         // DOM Elements
         const loginOverlay = document.getElementById('login-overlay');
@@ -628,6 +647,7 @@
 
             // Save to local memory
             subjects.push(data);
+            saveLocalData();
             renderSubjects();
             
             document.getElementById('add-form').reset();
@@ -640,6 +660,7 @@
             if (!currentUser) return;
             // Remove from local memory
             subjects = subjects.filter(subject => subject.id !== id);
+            saveLocalData();
             renderSubjects();
         };
 
@@ -782,6 +803,7 @@
             
             // Add user msg to local state
             chatHistory.push({ role: 'user', text: queryText, timestamp: Date.now() });
+            saveLocalData();
             renderChat();
 
             // Call Gemini API directly
@@ -800,6 +822,7 @@
                 const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Link Failure. Please retry.";
                 
                 chatHistory.push({ role: 'ai', text: aiText, timestamp: Date.now() });
+                saveLocalData();
                 renderChat();
                 
                 // Hide indicator briefly before TTS takes over
@@ -809,6 +832,7 @@
             } catch (err) {
                 console.error(err);
                 chatHistory.push({ role: 'ai', text: "Connection error. Ensure API Key is set.", timestamp: Date.now() });
+                saveLocalData();
                 renderChat();
                 document.getElementById('voice-indicator').classList.add('hidden');
             }
@@ -881,6 +905,7 @@
                         result: res,
                         timestamp: Date.now()
                     });
+                    saveLocalData();
                     renderCalcLog();
                 }
                 currentExpression = res;
@@ -963,6 +988,7 @@
                 subjects = [];
                 chatHistory = [];
                 calcHistory = [];
+                saveLocalData();
                 
                 // Re-render empty states
                 renderSubjects();
@@ -990,6 +1016,22 @@
 
         setInterval(() => {
             document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('en-GB');
+            
+            // 24H Auto-Refresh Check
+            const currentDayStr = new Date().toLocaleDateString();
+            if (localStorage.getItem('presence_pro_last_day') && localStorage.getItem('presence_pro_last_day') !== currentDayStr) {
+                localStorage.setItem('presence_pro_last_day', currentDayStr);
+                subjects = [];
+                chatHistory = [];
+                calcHistory = [];
+                saveLocalData();
+                renderSubjects();
+                renderChat();
+                renderCalcLog();
+                if (currentUser) {
+                    showModal("Daily Reset Sequence", "A new 24-hour cycle has begun. System memory has been automatically refreshed.", () => closeModal());
+                }
+            }
         }, 1000);
 
     </script>
