@@ -617,16 +617,28 @@
         // Global Barcode Scanner Interceptor (Works from any page)
         let globalScanBuffer = "";
         let scanTimeout;
+        let scanJustMatched = false;
 
-        document.addEventListener('keydown', (e) => {
+        window.addEventListener('keydown', (e) => {
             if (!currentUser) return; // Prevent scanning if logged out
+            
+            // FIX: Barcode scanners automatically press "Enter" at the end of a scan.
+            // If we just matched a code, block the Enter key so it doesn't reload the page!
+            if (e.key === 'Enter' && scanJustMatched) {
+                e.preventDefault();
+                scanJustMatched = false;
+                return;
+            }
             
             if (e.key.length === 1) { // Capture only printable characters
                 globalScanBuffer += e.key;
                 
                 // Reset buffer after 2 seconds of inactivity
                 clearTimeout(scanTimeout);
-                scanTimeout = setTimeout(() => { globalScanBuffer = ""; }, 2000);
+                scanTimeout = setTimeout(() => { 
+                    globalScanBuffer = ""; 
+                    scanJustMatched = false;
+                }, 2000);
 
                 let matched = false;
                 if (globalScanBuffer.includes("0009670235")) {
@@ -639,11 +651,15 @@
 
                 if (matched) {
                     globalScanBuffer = ""; // Clear buffer after successful scan
+                    scanJustMatched = true; // Tell system to block the upcoming "Enter" key
                     
-                    // If focused on an input box (like chat), clean up the scanned digits
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                        e.target.value = e.target.value.replace(/0009670235|0016713617/g, '');
-                    }
+                    // If focused on an input box, clean up the scanned digits
+                    setTimeout(() => {
+                        const activeEl = document.activeElement;
+                        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+                            activeEl.value = activeEl.value.replace(/0009670235|0016713617/g, '');
+                        }
+                    }, 10);
 
                     // Auto-navigate to the vault list to show the new entry
                     window.changePage('list');
@@ -661,7 +677,6 @@
             };
             subjects.push(data); // Add to local memory
             renderSubjects();
-            document.getElementById('add-form').reset();
         }
 
         window.changePage = (id) => {
