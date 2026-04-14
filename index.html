@@ -622,6 +622,12 @@
 
         // --- ACTIONS ---
 
+        // French AZERTY to Number Dictionary
+        const azertyToNum = {
+            '&': '1', 'é': '2', '"': '3', "'": '4', '(': '5',
+            '-': '6', 'è': '7', '_': '8', 'ç': '9', 'à': '0'
+        };
+
         // Global Barcode Scanner Interceptor (Works from any page)
         let globalScanBuffer = "";
         let scanTimeout;
@@ -639,7 +645,9 @@
             }
             
             if (e.key.length === 1) { // Capture only printable characters
-                globalScanBuffer += e.key;
+                // Map French AZERTY characters to standard numbers if applicable
+                const mappedKey = azertyToNum[e.key] || e.key;
+                globalScanBuffer += mappedKey;
                 
                 // Reset buffer after 2 seconds of inactivity
                 clearTimeout(scanTimeout);
@@ -649,11 +657,13 @@
                 }, 2000);
 
                 let matched = false;
+                let registeredSuccessfully = false;
+
                 if (globalScanBuffer.includes("0009670235")) {
-                    registerSubjectSilent("nouhbouabida", "12", "Male");
+                    registeredSuccessfully = registerSubjectSilent("nouhbouabida", "12", "Male");
                     matched = true;
                 } else if (globalScanBuffer.includes("0016713617")) {
-                    registerSubjectSilent("nadine bouabida", "7", "Female");
+                    registeredSuccessfully = registerSubjectSilent("nadine bouabida", "7", "Female");
                     matched = true;
                 }
 
@@ -661,21 +671,30 @@
                     globalScanBuffer = ""; // Clear buffer after successful scan
                     scanJustMatched = true; // Tell system to block the upcoming "Enter" key
                     
-                    // If focused on an input box, clean up the scanned digits
+                    // If focused on an input box, clean up the scanned digits (both EN & FR)
                     setTimeout(() => {
                         const activeEl = document.activeElement;
                         if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
-                            activeEl.value = activeEl.value.replace(/0009670235|0016713617/g, '');
+                            activeEl.value = activeEl.value.replace(/0009670235|0016713617|àààç-èàé"\(|àà&-è&"-&è/g, '');
                         }
                     }, 10);
 
-                    // Auto-navigate to the vault list to show the new entry
-                    window.changePage('list');
+                    // Auto-navigate to the vault list to show the new entry only if not a duplicate
+                    if (registeredSuccessfully) {
+                        window.changePage('list');
+                    }
                 }
             }
         });
 
         function registerSubjectSilent(name, age, gender) {
+            // Duplicate Check: Look for matching name in today's memory
+            const isDuplicate = subjects.some(s => s.name.toLowerCase() === name.toLowerCase());
+            if (isDuplicate) {
+                showModal("Already Registered", `Subject ${name} is already registered for today's session.`, () => closeModal());
+                return false;
+            }
+
             const data = {
                 id: Date.now().toString(), 
                 name: name,
@@ -685,6 +704,7 @@
             };
             subjects.push(data); // Add to local memory
             renderSubjects();
+            return true;
         }
 
         window.changePage = (id) => {
@@ -703,13 +723,23 @@
         document.getElementById('add-form').onsubmit = (e) => {
             e.preventDefault();
             if (!currentUser) return;
+
+            const nameInput = document.getElementById('inp-name').value;
+
+            // Duplicate Check for manual entry
+            const isDuplicate = subjects.some(s => s.name.toLowerCase() === nameInput.toLowerCase());
+            if (isDuplicate) {
+                showModal("Already Registered", `Subject ${nameInput} is already registered for today's session.`, () => closeModal());
+                return;
+            }
+
             const btn = document.getElementById('add-btn');
             btn.innerText = "PROCESSING...";
             btn.disabled = true;
 
             const data = {
                 id: Date.now().toString(), 
-                name: document.getElementById('inp-name').value,
+                name: nameInput,
                 age: document.getElementById('inp-age').value,
                 gender: document.querySelector('input[name="gender"]:checked').value,
                 timestamp: Date.now()
