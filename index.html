@@ -1491,12 +1491,31 @@
             
             if(!cursor || !dot) return;
 
+            let mouseX = window.innerWidth / 2;
+            let mouseY = window.innerHeight / 2;
+            let cursorX = mouseX;
+            let cursorY = mouseY;
+
             document.addEventListener('mousemove', (e) => {
-                cursor.style.left = e.clientX + 'px';
-                cursor.style.top = e.clientY + 'px';
-                dot.style.left = e.clientX + 'px';
-                dot.style.top = e.clientY + 'px';
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                
+                // The small dot follows instantly
+                dot.style.left = mouseX + 'px';
+                dot.style.top = mouseY + 'px';
             });
+
+            // Smooth trailing effect for the outer ring using LERP
+            function animateCursor() {
+                cursorX += (mouseX - cursorX) * 0.15; // 0.15 is the smoothness factor
+                cursorY += (mouseY - cursorY) * 0.15;
+                
+                cursor.style.left = cursorX + 'px';
+                cursor.style.top = cursorY + 'px';
+                
+                requestAnimationFrame(animateCursor);
+            }
+            animateCursor();
 
             document.addEventListener('mouseover', (e) => {
                 if(e.target.closest('button, a, input, select, textarea, .nav-link, .calc-btn')) {
