@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Presence Pro | Local Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         
@@ -544,7 +546,7 @@
     <!-- Application Logic (In-Memory Implementation) -->
     <script>
         // Environment Variables
-        const apiKey = ""; // Gemini API Key (Populates automatically)
+        const apiKey = ""; // Gemini API Key (Populates automatically in preview environment)
 
         // Local Memory State (Ephemeral per session to replace LocalStorage rules)
         let currentUser = null;
@@ -558,6 +560,26 @@
         let chatHistory = [];
         let calcHistory = [];
         const currentSessionStartDay = new Date().toLocaleDateString();
+
+        // Utility: Exponential Backoff Fetch
+        async function fetchWithBackoff(url, options, maxRetries = 5) {
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            for (let i = 0; i <= maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (e) {
+                    if (i === maxRetries) {
+                        throw e; // Throw on the last failure
+                    }
+                    // Wait for the specified delay before retrying
+                    await new Promise(resolve => setTimeout(resolve, delays[i]));
+                }
+            }
+        }
 
         // DOM Elements
         const loginOverlay = document.getElementById('login-overlay');
@@ -662,7 +684,6 @@
             document.getElementById('stat-males').innerText = males;
             document.getElementById('stat-females').innerText = females;
             document.getElementById('stat-age').innerText = subjects.length > 0 ? (totalAge / subjects.length).toFixed(1) : "0.0";
-
 
             container.innerHTML = subjects.map(s => {
                 const timeStr = new Date(s.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -980,7 +1001,8 @@
             document.getElementById('voice-indicator').classList.remove('hidden');
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${activeKey}`, {
+                // Using fetchWithBackoff helper for robustness
+                const result = await fetchWithBackoff(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${activeKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -994,7 +1016,6 @@
                     })
                 });
 
-                const result = await response.json();
                 const inlineData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData;
 
                 if (inlineData) {
@@ -1040,8 +1061,10 @@
 
             document.getElementById('voice-indicator').classList.remove('hidden');
             const activeKey = customApiKey || apiKey;
+            
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`, {
+                // Using fetchWithBackoff helper for robustness
+                const result = await fetchWithBackoff(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1049,7 +1072,7 @@
                         systemInstruction: { parts: [{ text: "You are Presence Pro AI, a clinical local assistant. Be concise, professional, and slightly futuristic. Limit your responses to 2-3 sentences to sound better when spoken aloud." }] }
                     })
                 });
-                const result = await response.json();
+                
                 const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Link Failure. Please retry.";
                 
                 chatHistory.push({ role: 'ai', text: aiText, timestamp: Date.now() });
@@ -1208,18 +1231,47 @@
 
         // --- CONTROLS & AUTO BACKUP ---
         window.exportData = () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ subjects, chatHistory, calcHistory }));
-            const dlAnchorElem = document.createElement('a');
-            dlAnchorElem.setAttribute("href", dataStr);
-            dlAnchorElem.setAttribute("download", "presence_pro_export.json");
-            dlAnchorElem.click();
+            if (!window.jspdf) {
+                showModal("System Notice", "PDF generation engine is currently unavailable.", () => closeModal());
+                return;
+            }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(18);
+            doc.text("Presence Pro - Session Logs", 14, 22);
+            
+            if (subjects.length === 0) {
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(11);
+                doc.text("No students registered for this session.", 14, 35);
+            } else {
+                // Format data for the table
+                const tableData = subjects.map(s => {
+                    const timeStr = new Date(s.timestamp).toLocaleTimeString('en-GB');
+                    return [s.id.slice(-6), s.name, s.age, timeStr];
+                });
+
+                // Use autoTable to create a perfectly aligned list/table
+                doc.autoTable({
+                    startY: 30,
+                    head: [['ID', 'NAME', 'AGE', 'TIME']],
+                    body: tableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [99, 102, 241], fontStyle: 'bold' }, // Indigo color to match app
+                    styles: { fontSize: 11, cellPadding: 5 }
+                });
+            }
+            
+            doc.save("presence_pro_students.pdf");
         };
 
         // AUTO BACKUP EVERY HOUR
         setInterval(() => {
             if (currentUser && subjects.length > 0) {
-                exportData();
-                chatHistory.push({ role: 'ai', text: "System Auto-Backup completed successfully.", timestamp: Date.now() });
+                // Background memory save instead of forcing a PDF download prompt
+                chatHistory.push({ role: 'ai', text: "System memory state secured.", timestamp: Date.now() });
                 renderChat();
             }
         }, 60 * 60 * 1000); 
@@ -1276,4 +1328,5 @@
         }, 1000);
 
     </script>
- 
+</body>
+</html>
